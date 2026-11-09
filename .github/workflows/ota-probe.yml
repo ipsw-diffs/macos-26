@@ -62,6 +62,8 @@ jobs:
           {
             sw_vers
             echo "cpus=$(sysctl -n hw.ncpu) memory_bytes=$(sysctl -n hw.memsize)"
+            echo "ulimit_soft=$(ulimit -n) ulimit_hard=$(ulimit -Hn)"
+            sysctl kern.maxfiles kern.maxfilesperproc
             echo "disk before cleanup:"
             df -h /
           } | tee "$RUNNER_TEMP/probe/runner.txt"
@@ -82,21 +84,46 @@ jobs:
         run: |
           set -euo pipefail
           cat >"$RUNNER_TEMP/probe/sample.sh" <<'EOF'
+          probe="$1"
           while true; do
+            stamp="$(date -u +%FT%TZ)"
             free_gb="$(df -g / | awk 'NR==2 {print $4}')"
-            rss_mb="$(ps -axo rss=,comm= | awk '/ipsw/ {sum += $1} END {print int(sum / 1024)}')"
             swap_used="$(sysctl -n vm.swapusage | awk '{print $6}')"
-            printf '%s free_gb=%s ipsw_rss_mb=%s swap_used=%s\n' \
-              "$(date -u +%FT%TZ)" "$free_gb" "$rss_mb" "$swap_used"
-            sleep 30
+            pid="$(ps -axo pid=,comm= | awk '$2 ~ /(^|\/)ipsw$/ {print $1; exit}')"
+            rss_mb=0
+            fd_count=0
+            footprint=none
+            if [ -n "$pid" ]; then
+              rss_mb="$(ps -o rss= -p "$pid" | awk '{print int($1 / 1024)}')"
+              footprint="$(top -l 1 -pid "$pid" -stats mem,cmprs 2>/dev/null | tail -1 | awk '{print $1 "/" $2}')"
+              lsof -n -P -a -p "$pid" -d 0-999999 -Fn 2>/dev/null | sed -n 's/^n//p' >"$probe/fds.tmp"
+              fd_count="$(wc -l <"$probe/fds.tmp" | tr -d ' ')"
+              if [ "$fd_count" -gt 100 ]; then
+                {
+                  echo "$stamp fd_count=$fd_count"
+                  sed -E 's/[0-9]+/N/g' "$probe/fds.tmp" | cut -d/ -f1-10 | sort | uniq -c | sort -rn | head -12
+                } >>"$probe/fds.log"
+              fi
+            fi
+            printf '%s free_gb=%s ipsw_rss_mb=%s footprint=%s fd_count=%s swap_used=%s\n' \
+              "$stamp" "$free_gb" "${rss_mb:-0}" "${footprint:-none}" "$fd_count" "$swap_used"
+            sleep 20
           done
           EOF
-          nohup bash "$RUNNER_TEMP/probe/sample.sh" >"$RUNNER_TEMP/probe/samples.log" 2>&1 &
+          nohup bash "$RUNNER_TEMP/probe/sample.sh" "$RUNNER_TEMP/probe" >"$RUNNER_TEMP/probe/samples.log" 2>&1 &
 
       - name: Install ipsw from the tap
         run: |
           set -euo pipefail
-          brew install --formula blacktop/tap/ipsw
+          for attempt in 1 2 3; do
+            if brew install --formula blacktop/tap/ipsw; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              exit 1
+            fi
+            sleep 60
+          done
           ipsw version | tee "$RUNNER_TEMP/probe/ipsw-version.txt"
 
       - name: Fetch symbolicator signatures
@@ -141,6 +168,7 @@ jobs:
 
       - name: Run ipsw diff with the generate.yml flags
         run: |
+          set +e
           set -uo pipefail
           probe="$RUNNER_TEMP/probe"
           args=(
@@ -164,17 +192,35 @@ jobs:
           fi
           start=$SECONDS
           ipsw --config "$RUNNER_TEMP/ipsw-config/config.yaml" diff "${args[@]}" \
-            "$OLD_FILE" "$NEW_FILE" 2>&1 | tee "$probe/diff.log"
+            "$OLD_FILE" "$NEW_FILE" 2>&1 |
+            perl -MPOSIX -ne 'BEGIN { $| = 1 } if (/Extracting from .payload/) { print strftime("%T ", gmtime), "extracted $n payload files\n" if ++$n % 50000 == 0; next } print strftime("%T ", gmtime), $_' |
+            tee "$probe/diff.log"
           status=${PIPESTATUS[0]}
           echo "diff_exit=$status seconds=$((SECONDS - start))" | tee "$probe/result.txt"
           exit "$status"
 
+      - name: Capture memory kill reason
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          set +e
+          sudo log show --last 30m --style compact \
+            --predicate 'eventMessage CONTAINS "memorystatus" OR eventMessage CONTAINS "jetsam"' |
+            tail -200 >"$RUNNER_TEMP/probe/memory-kill.txt"
+          exit 0
+
       - name: Summarize and package results
         if: always()
         run: |
+          set +e
           set -uo pipefail
           probe="$RUNNER_TEMP/probe"
           report="$RUNNER_TEMP/report"
+          if [ -d "$report" ]; then
+            tar -czf "$probe/report.tgz" -C "$report" .
+          fi
+          rm -f "$probe/fds.tmp"
           readme="$(find "$report" -maxdepth 2 -name README.md 2>/dev/null | head -1)"
           {
             echo "### $KIND $OLD_BUILD to $NEW_BUILD"
@@ -184,6 +230,7 @@ jobs:
             cat "$probe/runner.txt" 2>/dev/null
             echo "min_free_gb=$(sed -n 's/.*free_gb=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | head -1)"
             echo "peak_ipsw_rss_mb=$(sed -n 's/.*ipsw_rss_mb=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | tail -1)"
+            echo "peak_fd_count=$(sed -n 's/.*fd_count=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | tail -1)"
             echo "last_sample=$(tail -1 "$probe/samples.log")"
             if [ -n "$readme" ]; then
               echo "report_files=$(find "$report" -type f | wc -l) report_size=$(du -sh "$report" | cut -f1)"
@@ -195,9 +242,6 @@ jobs:
             grep -E '⨯|failed to' "$probe/diff.log" | cut -c1-200 | head -40
             echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
-          if [ -d "$report" ]; then
-            tar -czf "$probe/report.tgz" -C "$report" .
-          fi
           exit 0
 
       - name: Upload results
