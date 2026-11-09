@@ -18,62 +18,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: capacity-swap-28
-            mode: full
-            os: macOS
-            device: Mac18,5
-            major: 27
-            old_build: 26B123
-            new_build: 26C5035r
-            swap_g: 28
-          - label: capacity-swap-12
-            mode: full
-            os: macOS
-            device: Mac18,5
-            major: 27
-            old_build: 26B123
-            new_build: 26C5035r
-            swap_g: 12
-          - label: sandbox-ios-12
-            mode: sandbox
-            os: iOS
-            device: iPhone7,1
-            major: 12
-            old_build: 16H81
-            new_build: 16H88
-            swap_g: 28
-          - label: sandbox-ios-15
-            mode: sandbox
-            os: iOS
-            device: iPod9,1
-            major: 15
-            old_build: 19H402
-            new_build: 19H422
-            swap_g: 28
-          - label: sandbox-ios-16
-            mode: sandbox
-            os: iOS
-            device: iPhone10,3
-            major: 16
-            old_build: 20H370
-            new_build: 20H392
-            swap_g: 28
           - label: sandbox-ios-17
             mode: sandbox
             os: iPadOS
             device: iPad7,5
             major: 17
-            old_build: 21H446
+            old_build: 21F90
             new_build: 21H461
-            swap_g: 28
-          - label: sandbox-macos-15
-            mode: sandbox
-            os: macOS
-            device: Mac16,1
-            major: 15
-            old_build: 24G5074c
-            new_build: 24G90
-            swap_g: 28
+            swap_g: 12
     env:
       MODE: ${{ matrix.mode }}
       APPLEDB_OS: ${{ matrix.os }}
