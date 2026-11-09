@@ -10,7 +10,7 @@ permissions: {}
 jobs:
   probe:
     name: ${{ matrix.label }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 350
     permissions:
       contents: read
@@ -278,6 +278,27 @@ jobs:
           echo "diff_exit=$status seconds=$((SECONDS - start))" | tee "$probe/result.txt"
           exit "$status"
 
+      - name: Inspect iBoot keybags
+        if: always() && matrix.mode == 'sandbox'
+        continue-on-error: true
+        run: |
+          set +e
+          work="$RUNNER_TEMP/iboot"
+          for side in OLD NEW; do
+            input="${side}_FILE"
+            mkdir -p "$work/$side"
+            unzip -q -j -o "${!input}" '*iBoot.*.im4p' -d "$work/$side"
+            for im4p in "$work/$side"/*.im4p; do
+              if result="$(ipsw img4 im4p extract --kbag "$im4p" 2>"$work/error")"; then
+                keybags="$(jq '.keybags | length' <<<"$result")"
+              else
+                keybags="none: $(tail -1 "$work/error" | cut -c1-120)"
+              fi
+              printf '%s %s keybags=%s\n' "$side" "$(basename "$im4p")" "$keybags"
+            done
+          done | tee "$RUNNER_TEMP/probe/iboot-keybags.txt"
+          exit 0
+
       - name: Record out-of-memory kills
         if: always()
         continue-on-error: true
@@ -323,6 +344,8 @@ jobs:
             grep -E '⨯|failed to|no space left' "$probe/diff.log" | cut -c1-400 | head -40
             echo 'sandbox lines:'
             grep -i 'sandbox' "$probe/diff.log" | cut -c1-200 | head -10
+            echo 'iboot:'
+            cat "$probe/iboot-keybags.txt" 2>/dev/null
             echo 'oom:'
             cat "$probe/oom.txt" 2>/dev/null
             echo '```'
