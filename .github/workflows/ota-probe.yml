@@ -1,4 +1,4 @@
-name: Temporary OTA diff probe
+name: Temporary diff capacity probe
 
 on:
   push:
@@ -10,121 +10,178 @@ permissions: {}
 jobs:
   probe:
     name: ${{ matrix.label }}
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 350
-    permissions: {}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          - label: ota-parity
-            kind: ota
-            device: Mac17,6
-            major: 26
-            old_build: 25G82
-            new_build: 25G83
-            diff_device: ""
-          - label: ipsw-parity
-            kind: ipsw
-            device: Mac17,6
-            major: 26
-            old_build: 25G82
-            new_build: 25G83
-            diff_device: Macmini9,1
-          - label: ota-latest-missed
-            kind: ota
-            device: Mac17,6
-            major: 26
-            old_build: 25G332
-            new_build: 25G416
-            diff_device: ""
-          - label: ota-encrypted
-            kind: ota
+          - label: capacity-swap-28
+            mode: full
+            os: macOS
             device: Mac18,5
             major: 27
             old_build: 26B123
             new_build: 26C5035r
-            diff_device: ""
+            swap_g: 28
+          - label: capacity-swap-12
+            mode: full
+            os: macOS
+            device: Mac18,5
+            major: 27
+            old_build: 26B123
+            new_build: 26C5035r
+            swap_g: 12
+          - label: sandbox-ios-12
+            mode: sandbox
+            os: iOS
+            device: iPhone7,1
+            major: 12
+            old_build: 16H81
+            new_build: 16H88
+            swap_g: 28
+          - label: sandbox-ios-15
+            mode: sandbox
+            os: iOS
+            device: iPod9,1
+            major: 15
+            old_build: 19H402
+            new_build: 19H422
+            swap_g: 28
+          - label: sandbox-ios-16
+            mode: sandbox
+            os: iOS
+            device: iPhone10,3
+            major: 16
+            old_build: 20H370
+            new_build: 20H392
+            swap_g: 28
+          - label: sandbox-ios-17
+            mode: sandbox
+            os: iPadOS
+            device: iPad7,5
+            major: 17
+            old_build: 21H446
+            new_build: 21H461
+            swap_g: 28
+          - label: sandbox-macos-15
+            mode: sandbox
+            os: macOS
+            device: Mac16,1
+            major: 15
+            old_build: 24G5074c
+            new_build: 24G90
+            swap_g: 28
     env:
-      KIND: ${{ matrix.kind }}
+      MODE: ${{ matrix.mode }}
+      APPLEDB_OS: ${{ matrix.os }}
       DEVICE: ${{ matrix.device }}
       MAJOR: ${{ matrix.major }}
       OLD_BUILD: ${{ matrix.old_build }}
       NEW_BUILD: ${{ matrix.new_build }}
-      DIFF_DEVICE: ${{ matrix.diff_device }}
+      SWAP_G: ${{ matrix.swap_g }}
+      IPSW_TAG: v3.1.743
       SYMBOLICATOR_COMMIT: 81178cfe6c8869612ef092f6471fce3e17d95b20
 
     steps:
-      - name: Record runner and reclaim disk
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: true
+          swap-storage: false
+
+      - name: Record runner
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/probe"
           {
-            sw_vers
-            echo "cpus=$(sysctl -n hw.ncpu) memory_bytes=$(sysctl -n hw.memsize)"
+            grep PRETTY_NAME /etc/os-release
+            echo "cpus=$(nproc)"
             echo "ulimit_soft=$(ulimit -n) ulimit_hard=$(ulimit -Hn)"
-            sysctl kern.maxfiles kern.maxfilesperproc
-            echo "disk before cleanup:"
+            free -h
             df -h /
           } | tee "$RUNNER_TEMP/probe/runner.txt"
-          selected="$(xcode-select -p)"
-          selected="${selected%%.app/*}.app"
-          for app in /Applications/Xcode*.app; do
-            if [ "$app" != "$selected" ] && [ ! -L "$app" ]; then
-              sudo rm -rf "$app"
-            fi
-          done
-          sudo rm -rf "$HOME/Library/Android"
-          {
-            echo "disk after cleanup:"
-            df -h /
-          } | tee -a "$RUNNER_TEMP/probe/runner.txt"
 
       - name: Start resource sampler
         run: |
           set -euo pipefail
           cat >"$RUNNER_TEMP/probe/sample.sh" <<'EOF'
           probe="$1"
+          peak_session_mb=0
           while true; do
             stamp="$(date -u +%FT%TZ)"
-            free_gb="$(df -g / | awk 'NR==2 {print $4}')"
-            swap_used="$(sysctl -n vm.swapusage | awk '{print $6}')"
-            pid="$(ps -axo pid=,comm= | awk '$2 ~ /(^|\/)ipsw$/ {print $1; exit}')"
+            free_gb="$(df -BG --output=avail / | tail -1 | tr -dc '0-9')"
+            mem_used_mb="$(free -m | awk '/^Mem:/ {print $3}')"
+            swap_used_mb="$(free -m | awk '/^Swap:/ {print $3}')"
+            pid="$(pgrep -x ipsw | head -1)"
             rss_mb=0
+            hwm_mb=0
+            proc_swap_mb=0
             fd_count=0
-            footprint=none
             if [ -n "$pid" ]; then
-              rss_mb="$(ps -o rss= -p "$pid" | awk '{print int($1 / 1024)}')"
-              footprint="$(top -l 1 -pid "$pid" -stats mem,cmprs 2>/dev/null | tail -1 | awk '{print $1 "/" $2}')"
-              lsof -n -P -a -p "$pid" -d 0-999999 -Fn 2>/dev/null | sed -n 's/^n//p' >"$probe/fds.tmp"
-              fd_count="$(wc -l <"$probe/fds.tmp" | tr -d ' ')"
-              if [ "$fd_count" -gt 100 ]; then
-                {
-                  echo "$stamp fd_count=$fd_count"
-                  sed -E 's/[0-9]+/N/g' "$probe/fds.tmp" | cut -d/ -f1-10 | sort | uniq -c | sort -rn | head -12
-                } >>"$probe/fds.log"
-              fi
+              rss_mb="$(awk '/^VmRSS:/ {print int($2 / 1024)}' "/proc/$pid/status")"
+              hwm_mb="$(awk '/^VmHWM:/ {print int($2 / 1024)}' "/proc/$pid/status")"
+              proc_swap_mb="$(awk '/^VmSwap:/ {print int($2 / 1024)}' "/proc/$pid/status")"
+              fd_count="$(find "/proc/$pid/fd" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)"
             fi
-            printf '%s free_gb=%s ipsw_rss_mb=%s footprint=%s fd_count=%s swap_used=%s\n' \
-              "$stamp" "$free_gb" "${rss_mb:-0}" "${footprint:-none}" "$fd_count" "$swap_used"
+            session="$(du -m /tmp/ipsw-diff*/ipsw-session/*/* 2>/dev/null | sort -rn)"
+            session_mb="$(printf '%s\n' "$session" | awk '{sum += $1} END {print sum + 0}')"
+            if [ "$session_mb" -gt "$peak_session_mb" ]; then
+              peak_session_mb="$session_mb"
+              printf '%s total_mb=%s\n%s\n' "$stamp" "$session_mb" "$session" >"$probe/session-peak.txt"
+            fi
+            printf '%s free_gb=%s mem_used_mb=%s swap_used_mb=%s ipsw_rss_mb=%s ipsw_hwm_mb=%s ipsw_swap_mb=%s fd_count=%s session_mb=%s\n' \
+              "$stamp" "$free_gb" "$mem_used_mb" "$swap_used_mb" "${rss_mb:-0}" "${hwm_mb:-0}" "${proc_swap_mb:-0}" "$fd_count" "$session_mb"
             sleep 20
           done
           EOF
           nohup bash "$RUNNER_TEMP/probe/sample.sh" "$RUNNER_TEMP/probe" >"$RUNNER_TEMP/probe/samples.log" 2>&1 &
 
-      - name: Install ipsw from the tap
+      - name: Install ipsw with the job token
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if brew install --formula blacktop/tap/ipsw; then
+          version="${IPSW_TAG#v}"
+          asset="ipsw_${version}_linux_x86_64.tar.gz"
+          digest="$(gh api "repos/blacktop/ipsw/releases/tags/$IPSW_TAG" \
+            --jq ".assets[] | select(.name == \"$asset\") | .digest")"
+          install_dir="$RUNNER_TEMP/ipsw-install"
+          mkdir -p "$install_dir"
+          archive="$install_dir/$asset"
+          for attempt in 1 2 3 4 5; do
+            if timeout 300 gh release download "$IPSW_TAG" --repo blacktop/ipsw \
+              --pattern "$asset" --output "$archive" --clobber; then
+              echo "token download succeeded on attempt $attempt" | tee -a "$RUNNER_TEMP/probe/runner.txt"
               break
             fi
-            if [ "$attempt" = 3 ]; then
+            if [ "$attempt" = 5 ]; then
               exit 1
             fi
-            sleep 60
+            sleep 5
           done
-          ipsw version | tee "$RUNNER_TEMP/probe/ipsw-version.txt"
+          printf '%s  %s\n' "${digest#sha256:}" "$archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$install_dir" ipsw
+          "$install_dir/ipsw" version | tee "$RUNNER_TEMP/probe/ipsw-version.txt"
+          printf '%s\n' "$install_dir" >>"$GITHUB_PATH"
+
+      - name: Install apfs-fuse
+        env:
+          APFS_FUSE_SHA: 66b86bd525e8cb90f9012543be89b1f092b75cf3
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            fuse3 libfuse3-dev libbz2-dev libattr1-dev zlib1g-dev cmake g++ git
+          src="$RUNNER_TEMP/apfs-fuse"
+          git clone --quiet https://github.com/sgan81/apfs-fuse.git "$src"
+          git -C "$src" checkout --quiet "$APFS_FUSE_SHA"
+          git -C "$src" submodule update --init --recursive --quiet
+          cmake -S "$src" -B "$src/build" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$src/build" --parallel "$(nproc)"
+          sudo install -m 0755 "$src/build/apfs-fuse" /usr/local/bin/apfs-fuse
 
       - name: Fetch symbolicator signatures
         run: |
@@ -135,6 +192,26 @@ jobs:
           git -C "$repo" fetch --quiet --depth 1 origin "$SYMBOLICATOR_COMMIT"
           git -C "$repo" checkout --quiet --detach FETCH_HEAD
 
+      - name: Add swap
+        run: |
+          set -euo pipefail
+          swapdir=/mnt
+          df "$swapdir" >/dev/null 2>&1 || swapdir=/
+          avail_g="$(df -P "$swapdir" | awk 'NR==2 {print int($4/1024/1024)}')"
+          size_g=$(( avail_g - 10 ))
+          [ "$size_g" -gt "$SWAP_G" ] && size_g="$SWAP_G"
+          swapfile="$swapdir/swapfile"
+          sudo fallocate -l "${size_g}G" "$swapfile" || \
+            sudo dd if=/dev/zero of="$swapfile" bs=1M count=$(( size_g * 1024 ))
+          sudo chmod 600 "$swapfile"
+          sudo mkswap "$swapfile" >/dev/null
+          sudo swapon "$swapfile"
+          {
+            echo "swapfile=$swapfile size_g=$size_g"
+            free -h
+            df -h /
+          } | tee -a "$RUNNER_TEMP/probe/runner.txt"
+
       - name: Download and verify exact inputs
         run: |
           set -euo pipefail
@@ -142,8 +219,8 @@ jobs:
           mkdir -p "$config"
           touch "$config/config.yaml"
           ipsw --config "$config/config.yaml" dl appledb \
-            --os macOS --device "$DEVICE" --version "$MAJOR." \
-            --type "$KIND" --json --no-color >"$RUNNER_TEMP/sources.json"
+            --os "$APPLEDB_OS" --device "$DEVICE" --version "$MAJOR." \
+            --type ipsw --json --no-color >"$RUNNER_TEMP/sources.json"
 
           fetch() {
             local side="$1" build="$2" artifact url size sha256 file
@@ -154,11 +231,11 @@ jobs:
             size="$(jq --exit-status --raw-output .size <<<"$artifact")"
             sha256="$(jq --exit-status --raw-output .sha256 <<<"$artifact")"
             mkdir -p "$RUNNER_TEMP/$side"
-            file="$RUNNER_TEMP/$side/${DEVICE}_${build}_${KIND}.${url##*.}"
+            file="$RUNNER_TEMP/$side/${DEVICE}_${build}_Restore.ipsw"
             curl --fail --location --silent --show-error \
               --retry 5 --retry-delay 5 --retry-all-errors --output "$file" "$url"
-            test "$(stat -f '%z' "$file")" = "$size"
-            printf '%s  %s\n' "$sha256" "$file" | shasum --algorithm 256 --check --strict
+            test "$(stat --printf='%s' "$file")" = "$size"
+            printf '%s  %s\n' "$sha256" "$file" | sha256sum --check --strict
             printf '%s_FILE=%s\n' "$side" "$file" >>"$GITHUB_ENV"
           }
 
@@ -166,48 +243,47 @@ jobs:
           fetch NEW "$NEW_BUILD"
           df -h / | tee -a "$RUNNER_TEMP/probe/runner.txt"
 
-      - name: Run ipsw diff with the generate.yml flags
+      - name: Run ipsw diff
         run: |
           set +e
           set -uo pipefail
           probe="$RUNNER_TEMP/probe"
           args=(
+            --device "$DEVICE"
             --title "$OLD_BUILD .vs $NEW_BUILD"
             --output "$RUNNER_TEMP/report"
             --markdown
-            --fw
-            --launchd
-            --feat
-            --strs
-            --ent
-            --files
-            --starts
             --sandbox
-            --signatures "$RUNNER_TEMP/symbolicator/kernel"
-            --block-list '__TEXT.__info_plist'
-            --block-list '__AUTH_CONST.__auth_ptr'
           )
-          if [ -n "$DIFF_DEVICE" ]; then
-            args+=(--device "$DIFF_DEVICE")
+          if [ "$MODE" = full ]; then
+            args+=(
+              --fw
+              --launchd
+              --feat
+              --strs
+              --ent
+              --files
+              --starts
+              --signatures "$RUNNER_TEMP/symbolicator/kernel"
+              --block-list '__TEXT.__info_plist'
+              --block-list '__AUTH_CONST.__auth_ptr'
+            )
           fi
           start=$SECONDS
           ipsw --config "$RUNNER_TEMP/ipsw-config/config.yaml" diff "${args[@]}" \
             "$OLD_FILE" "$NEW_FILE" 2>&1 |
-            perl -MPOSIX -ne 'BEGIN { $| = 1 } if (/Extracting from .payload/) { print strftime("%T ", gmtime), "extracted $n payload files\n" if ++$n % 50000 == 0; next } print strftime("%T ", gmtime), $_' |
+            perl -MPOSIX -ne 'BEGIN { $| = 1 } print strftime("%T ", gmtime), $_' |
             tee "$probe/diff.log"
           status=${PIPESTATUS[0]}
           echo "diff_exit=$status seconds=$((SECONDS - start))" | tee "$probe/result.txt"
           exit "$status"
 
-      - name: Capture memory kill reason
-        if: failure()
+      - name: Record out-of-memory kills
+        if: always()
         continue-on-error: true
-        timeout-minutes: 3
         run: |
           set +e
-          sudo log show --last 30m --style compact \
-            --predicate 'eventMessage CONTAINS "memorystatus" OR eventMessage CONTAINS "jetsam"' |
-            tail -200 >"$RUNNER_TEMP/probe/memory-kill.txt"
+          sudo dmesg -T | grep -iE 'out of memory|oom-kill|killed process' | tail -20 >"$RUNNER_TEMP/probe/oom.txt"
           exit 0
 
       - name: Summarize and package results
@@ -220,26 +296,35 @@ jobs:
           if [ -d "$report" ]; then
             tar -czf "$probe/report.tgz" -C "$report" .
           fi
-          rm -f "$probe/fds.tmp"
           readme="$(find "$report" -maxdepth 2 -name README.md 2>/dev/null | head -1)"
+          peak() {
+            sed -n "s/.*$1=\([0-9]*\).*/\1/p" "$probe/samples.log" | sort -n | tail -1
+          }
           {
-            echo "### $KIND $OLD_BUILD to $NEW_BUILD"
+            echo "### $MODE $DEVICE $OLD_BUILD to $NEW_BUILD swap=$SWAP_G"
             echo '```'
             cat "$probe/result.txt" 2>/dev/null
             cat "$probe/ipsw-version.txt" 2>/dev/null
             cat "$probe/runner.txt" 2>/dev/null
             echo "min_free_gb=$(sed -n 's/.*free_gb=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | head -1)"
-            echo "peak_ipsw_rss_mb=$(sed -n 's/.*ipsw_rss_mb=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | tail -1)"
-            echo "peak_fd_count=$(sed -n 's/.*fd_count=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | tail -1)"
-            echo "last_sample=$(tail -1 "$probe/samples.log")"
+            echo "peak_swap_used_mb=$(peak swap_used_mb)"
+            echo "peak_ipsw_hwm_mb=$(peak ipsw_hwm_mb)"
+            echo "peak_ipsw_swap_mb=$(peak ipsw_swap_mb)"
+            echo "peak_fd_count=$(peak fd_count)"
+            echo "peak_session_mb=$(peak session_mb)"
+            cat "$probe/session-peak.txt" 2>/dev/null
             if [ -n "$readme" ]; then
               echo "report_files=$(find "$report" -type f | wc -l) report_size=$(du -sh "$report" | cut -f1)"
-              grep -E '^## ' "$readme"
+              grep -E '^##+ ' "$readme" | grep -v '`'
             else
               echo 'no README produced'
             fi
             echo 'logged errors:'
-            grep -E '⨯|failed to' "$probe/diff.log" | cut -c1-200 | head -40
+            grep -E '⨯|failed to|no space left' "$probe/diff.log" | cut -c1-400 | head -40
+            echo 'sandbox lines:'
+            grep -i 'sandbox' "$probe/diff.log" | cut -c1-200 | head -10
+            echo 'oom:'
+            cat "$probe/oom.txt" 2>/dev/null
             echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
           exit 0
