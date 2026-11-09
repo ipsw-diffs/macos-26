@@ -1,0 +1,210 @@
+name: Temporary OTA diff probe
+
+on:
+  push:
+    branches:
+      - probe/ota
+
+permissions: {}
+
+jobs:
+  probe:
+    name: ${{ matrix.label }}
+    runs-on: macos-latest
+    timeout-minutes: 350
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: ota-parity
+            kind: ota
+            device: Mac17,6
+            major: 26
+            old_build: 25G82
+            new_build: 25G83
+            diff_device: ""
+          - label: ipsw-parity
+            kind: ipsw
+            device: Mac17,6
+            major: 26
+            old_build: 25G82
+            new_build: 25G83
+            diff_device: Macmini9,1
+          - label: ota-latest-missed
+            kind: ota
+            device: Mac17,6
+            major: 26
+            old_build: 25G332
+            new_build: 25G416
+            diff_device: ""
+          - label: ota-encrypted
+            kind: ota
+            device: Mac18,5
+            major: 27
+            old_build: 26B123
+            new_build: 26C5035r
+            diff_device: ""
+    env:
+      KIND: ${{ matrix.kind }}
+      DEVICE: ${{ matrix.device }}
+      MAJOR: ${{ matrix.major }}
+      OLD_BUILD: ${{ matrix.old_build }}
+      NEW_BUILD: ${{ matrix.new_build }}
+      DIFF_DEVICE: ${{ matrix.diff_device }}
+      SYMBOLICATOR_COMMIT: 81178cfe6c8869612ef092f6471fce3e17d95b20
+
+    steps:
+      - name: Record runner and reclaim disk
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/probe"
+          {
+            sw_vers
+            echo "cpus=$(sysctl -n hw.ncpu) memory_bytes=$(sysctl -n hw.memsize)"
+            echo "disk before cleanup:"
+            df -h /
+          } | tee "$RUNNER_TEMP/probe/runner.txt"
+          selected="$(xcode-select -p)"
+          selected="${selected%%.app/*}.app"
+          for app in /Applications/Xcode*.app; do
+            if [ "$app" != "$selected" ] && [ ! -L "$app" ]; then
+              sudo rm -rf "$app"
+            fi
+          done
+          sudo rm -rf "$HOME/Library/Android"
+          {
+            echo "disk after cleanup:"
+            df -h /
+          } | tee -a "$RUNNER_TEMP/probe/runner.txt"
+
+      - name: Start resource sampler
+        run: |
+          set -euo pipefail
+          cat >"$RUNNER_TEMP/probe/sample.sh" <<'EOF'
+          while true; do
+            free_gb="$(df -g / | awk 'NR==2 {print $4}')"
+            rss_mb="$(ps -axo rss=,comm= | awk '/ipsw/ {sum += $1} END {print int(sum / 1024)}')"
+            swap_used="$(sysctl -n vm.swapusage | awk '{print $6}')"
+            printf '%s free_gb=%s ipsw_rss_mb=%s swap_used=%s\n' \
+              "$(date -u +%FT%TZ)" "$free_gb" "$rss_mb" "$swap_used"
+            sleep 30
+          done
+          EOF
+          nohup bash "$RUNNER_TEMP/probe/sample.sh" >"$RUNNER_TEMP/probe/samples.log" 2>&1 &
+
+      - name: Install ipsw from the tap
+        run: |
+          set -euo pipefail
+          brew install --formula blacktop/tap/ipsw
+          ipsw version | tee "$RUNNER_TEMP/probe/ipsw-version.txt"
+
+      - name: Fetch symbolicator signatures
+        run: |
+          set -euo pipefail
+          repo="$RUNNER_TEMP/symbolicator"
+          git init --quiet "$repo"
+          git -C "$repo" remote add origin https://github.com/blacktop/symbolicator.git
+          git -C "$repo" fetch --quiet --depth 1 origin "$SYMBOLICATOR_COMMIT"
+          git -C "$repo" checkout --quiet --detach FETCH_HEAD
+
+      - name: Download and verify exact inputs
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/ipsw-config"
+          mkdir -p "$config"
+          touch "$config/config.yaml"
+          ipsw --config "$config/config.yaml" dl appledb \
+            --os macOS --device "$DEVICE" --version "$MAJOR." \
+            --type "$KIND" --json --no-color >"$RUNNER_TEMP/sources.json"
+
+          fetch() {
+            local side="$1" build="$2" artifact url size sha256 file
+            artifact="$(jq --exit-status --compact-output --arg build "$build" '
+              [.releases[] | select(.build == $build) | .artifacts[] | select(.delivery == "full")]
+              | select(length == 1) | .[0]' "$RUNNER_TEMP/sources.json")"
+            url="$(jq --exit-status --raw-output .active_url <<<"$artifact")"
+            size="$(jq --exit-status --raw-output .size <<<"$artifact")"
+            sha256="$(jq --exit-status --raw-output .sha256 <<<"$artifact")"
+            mkdir -p "$RUNNER_TEMP/$side"
+            file="$RUNNER_TEMP/$side/${DEVICE}_${build}_${KIND}.${url##*.}"
+            curl --fail --location --silent --show-error \
+              --retry 5 --retry-delay 5 --retry-all-errors --output "$file" "$url"
+            test "$(stat -f '%z' "$file")" = "$size"
+            printf '%s  %s\n' "$sha256" "$file" | shasum --algorithm 256 --check --strict
+            printf '%s_FILE=%s\n' "$side" "$file" >>"$GITHUB_ENV"
+          }
+
+          fetch OLD "$OLD_BUILD"
+          fetch NEW "$NEW_BUILD"
+          df -h / | tee -a "$RUNNER_TEMP/probe/runner.txt"
+
+      - name: Run ipsw diff with the generate.yml flags
+        run: |
+          set -uo pipefail
+          probe="$RUNNER_TEMP/probe"
+          args=(
+            --title "$OLD_BUILD .vs $NEW_BUILD"
+            --output "$RUNNER_TEMP/report"
+            --markdown
+            --fw
+            --launchd
+            --feat
+            --strs
+            --ent
+            --files
+            --starts
+            --sandbox
+            --signatures "$RUNNER_TEMP/symbolicator/kernel"
+            --block-list '__TEXT.__info_plist'
+            --block-list '__AUTH_CONST.__auth_ptr'
+          )
+          if [ -n "$DIFF_DEVICE" ]; then
+            args+=(--device "$DIFF_DEVICE")
+          fi
+          start=$SECONDS
+          ipsw --config "$RUNNER_TEMP/ipsw-config/config.yaml" diff "${args[@]}" \
+            "$OLD_FILE" "$NEW_FILE" 2>&1 | tee "$probe/diff.log"
+          status=${PIPESTATUS[0]}
+          echo "diff_exit=$status seconds=$((SECONDS - start))" | tee "$probe/result.txt"
+          exit "$status"
+
+      - name: Summarize and package results
+        if: always()
+        run: |
+          set -uo pipefail
+          probe="$RUNNER_TEMP/probe"
+          report="$RUNNER_TEMP/report"
+          readme="$(find "$report" -maxdepth 2 -name README.md 2>/dev/null | head -1)"
+          {
+            echo "### $KIND $OLD_BUILD to $NEW_BUILD"
+            echo '```'
+            cat "$probe/result.txt" 2>/dev/null
+            cat "$probe/ipsw-version.txt" 2>/dev/null
+            cat "$probe/runner.txt" 2>/dev/null
+            echo "min_free_gb=$(sed -n 's/.*free_gb=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | head -1)"
+            echo "peak_ipsw_rss_mb=$(sed -n 's/.*ipsw_rss_mb=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | tail -1)"
+            echo "last_sample=$(tail -1 "$probe/samples.log")"
+            if [ -n "$readme" ]; then
+              echo "report_files=$(find "$report" -type f | wc -l) report_size=$(du -sh "$report" | cut -f1)"
+              grep -E '^## ' "$readme"
+            else
+              echo 'no README produced'
+            fi
+            echo 'logged errors:'
+            grep -E '⨯|failed to' "$probe/diff.log" | cut -c1-200 | head -40
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          if [ -d "$report" ]; then
+            tar -czf "$probe/report.tgz" -C "$report" .
+          fi
+          exit 0
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: probe-${{ matrix.label }}
+          path: ${{ runner.temp }}/probe/
+          retention-days: 14
+          if-no-files-found: warn
