@@ -26,22 +26,6 @@ jobs:
             old_build: 25G82
             new_build: 25G83
             diff_device: ""
-          - label: ipsw-parity
-            kind: ipsw
-            os: macOS
-            device: Mac17,6
-            major: 26
-            old_build: 25G82
-            new_build: 25G83
-            diff_device: Mac17,6
-          - label: ota-latest-missed
-            kind: ota
-            os: macOS
-            device: Mac17,6
-            major: 26
-            old_build: 25G332
-            new_build: 25G416
-            diff_device: ""
           - label: ota-encrypted
             kind: ota
             os: macOS
@@ -50,14 +34,6 @@ jobs:
             old_build: 26B123
             new_build: 26C5035r
             diff_device: ""
-          - label: ipsw-iboot
-            kind: ipsw
-            os: iOS
-            device: iPod9,1
-            major: 15
-            old_build: 19H402
-            new_build: 19H422
-            diff_device: iPod9,1
     env:
       KIND: ${{ matrix.kind }}
       APPLEDB_OS: ${{ matrix.os }}
@@ -100,10 +76,12 @@ jobs:
           set -euo pipefail
           cat >"$RUNNER_TEMP/probe/sample.sh" <<'EOF'
           probe="$1"
+          low_samples=0
           while true; do
             stamp="$(date -u +%FT%TZ)"
             free_gb="$(df -g / | awk 'NR==2 {print $4}')"
             swap_used="$(sysctl -n vm.swapusage | awk '{print $6}')"
+            mem_free_pct="$(sysctl -n kern.memorystatus_level 2>/dev/null || echo na)"
             pid="$(ps -axo pid=,comm= | awk '$2 ~ /(^|\/)ipsw$/ {print $1; exit}')"
             rss_mb=0
             fd_count=0
@@ -120,8 +98,20 @@ jobs:
                 } >>"$probe/fds.log"
               fi
             fi
-            printf '%s free_gb=%s ipsw_rss_mb=%s footprint=%s fd_count=%s swap_used=%s\n' \
-              "$stamp" "$free_gb" "${rss_mb:-0}" "${footprint:-none}" "$fd_count" "$swap_used"
+            printf '%s free_gb=%s ipsw_rss_mb=%s footprint=%s fd_count=%s swap_used=%s mem_free_pct=%s\n' \
+              "$stamp" "$free_gb" "${rss_mb:-0}" "${footprint:-none}" "$fd_count" "$swap_used" "$mem_free_pct"
+            # The last run's runner died with no logs, so stop ipsw with a
+            # goroutine dump before memory runs out, while uploads still work.
+            if [ -n "$pid" ] && [ "$mem_free_pct" -le 5 ] 2>/dev/null; then
+              low_samples=$((low_samples + 1))
+            else
+              low_samples=0
+            fi
+            if [ "$low_samples" -ge 3 ] && [ ! -e "$probe/watchdog.txt" ]; then
+              echo "$stamp sent SIGQUIT to ipsw pid $pid after 3 samples with mem_free_pct<=5" |
+                tee "$probe/watchdog.txt"
+              kill -QUIT "$pid"
+            fi
             sleep 20
           done
           EOF
@@ -261,6 +251,8 @@ jobs:
             echo "min_free_gb=$(sed -n 's/.*free_gb=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | head -1)"
             echo "peak_ipsw_rss_mb=$(sed -n 's/.*ipsw_rss_mb=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | tail -1)"
             echo "peak_fd_count=$(sed -n 's/.*fd_count=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | tail -1)"
+            echo "min_mem_free_pct=$(sed -n 's/.*mem_free_pct=\([0-9]*\).*/\1/p' "$probe/samples.log" | sort -n | head -1)"
+            cat "$probe/watchdog.txt" 2>/dev/null
             echo "last_sample=$(tail -1 "$probe/samples.log")"
             if [ -n "$status_file" ]; then
               echo "status.json: $(jq --compact-output . "$status_file")"
