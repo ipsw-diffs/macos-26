@@ -18,22 +18,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: ota-parity
+          - label: ota-names
+            mode: names
             kind: ota
             os: macOS
             device: Mac17,6
             major: 26
-            old_build: 25G82
-            new_build: 25G83
+            old_build: 25G332
+            new_build: 25G416
             diff_device: ""
-          - label: ota-encrypted
+            gomemlimit: ""
+          - label: ota-gomemlimit
+            mode: diff
             kind: ota
             os: macOS
-            device: Mac18,5
-            major: 27
-            old_build: 26B123
-            new_build: 26C5035r
+            device: Mac17,6
+            major: 26
+            old_build: 25G332
+            new_build: 25G416
             diff_device: ""
+            gomemlimit: 3500MiB
     env:
       KIND: ${{ matrix.kind }}
       APPLEDB_OS: ${{ matrix.os }}
@@ -186,7 +190,32 @@ jobs:
           fetch NEW "$NEW_BUILD"
           df -h / | tee -a "$RUNNER_TEMP/probe/runner.txt"
 
+      - name: List and extract the reported payload names
+        if: matrix.mode == 'names'
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/probe"
+          pattern='^(bin/test|bin/\[|sbin/sha1|sbin/sha1sum|sbin/md5|usr/bin/(at|atq|atrm|batch|b64encode|uuencode|b64decode|uudecode|chsh|chfn|chpass|parldyn5\.34))$'
+          printf '%s\n' "$pattern" >"$probe/names-pattern.txt"
+          for side in OLD NEW; do
+            file_var="${side}_FILE"
+            ota="${!file_var}"
+            ipsw --config "$RUNNER_TEMP/ipsw-config/config.yaml" ota ls \
+              --payload --json --pattern "$pattern" "$ota" >"$probe/ls-$side.json"
+            out="$RUNNER_TEMP/extract-$side"
+            mkdir -p "$out"
+            ipsw --config "$RUNNER_TEMP/ipsw-config/config.yaml" ota extract \
+              --pattern "$pattern" --confirm --output "$out" "$ota" 2>&1 |
+              tail -40 >"$probe/extract-$side.log"
+            (cd "$out" && find . -type f -exec ls -li {} + | sort -k10) >"$probe/extract-$side.txt"
+            echo "== $side"
+            cat "$probe/extract-$side.txt"
+          done
+
       - name: Run ipsw diff with the live generate.yml flags
+        if: matrix.mode == 'diff'
+        env:
+          GOMEMLIMIT: ${{ matrix.gomemlimit }}
         run: |
           set +e
           set -uo pipefail
