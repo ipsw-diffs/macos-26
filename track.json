@@ -6,10 +6,11 @@
   "device": "Mac17,6",
   "major_version": 26,
   "anchor": {
-    "version": "26.6.2 RC",
-    "build": "25G82",
-    "released": "2026-08-10T00:00:00Z",
+    "version": "26.7.2",
+    "build": "25G332",
+    "released": "2026-10-26T00:00:00Z",
     "beta": false,
-    "rc": true
-  }
+    "rc": false
+  },
+  "ota_fallback": true
 }
