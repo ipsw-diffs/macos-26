@@ -18,7 +18,7 @@ jobs:
       actions: write
       contents: read
       issues: read
-    uses: ipsw-diffs/catalog/.github/workflows/poll.yml@efa33f154b88ff6129de0e942153cd17d5e35cfe
+    uses: ipsw-diffs/catalog/.github/workflows/poll.yml@088a1cbe94897f292acf9b540f8f7b62e2953665
     with:
       policy-path: track.json
       manifests-dir: manifests
