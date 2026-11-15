@@ -12,15 +12,7 @@ release sequence is implied.
 
 | Device | Comparison | Manifest |
 | --- | --- | --- |
-| `Mac17,6` | [26.6.2 (25G82) → 26.6.2 (25G83)](diffs/26_6_2_25G82_vs_26_6_2_25G83/README.md) | [provenance](manifests/26_6_2_25G82_vs_26_6_2_25G83.json) |
-| `UniversalMac` | [26.3 (25D5087f) → 26.3 (25D5101c)](diffs/26_3_25D5087f__vs_26_3_25D5101c/README.md) | [provenance](manifests/26_3_25D5087f__vs_26_3_25D5101c.json) |
-| `UniversalMac` | [26.4 (25E246) → 26.4.1 (25E253)](diffs/26_4_25E246_vs_26_4_1_25E253/README.md) | [provenance](manifests/26_4_25E246_vs_26_4_1_25E253.json) |
-| `UniversalMac` | [26.5 (25F71) → 26.5.1 (25F80)](diffs/26_5_25F71__vs_26_5_1_25F80/README.md) | [provenance](manifests/26_5_25F71__vs_26_5_1_25F80.json) |
-| `UniversalMac` | [26.6.1 (25G76) → 26.6.2 (25G82)](diffs/26_6_1_25G76_vs_26_6_2_25G82/README.md) | [provenance](manifests/26_6_1_25G76_vs_26_6_2_25G82.json) |
-| `UniversalMac` | [26.6 (25G5028f) → 26.6 (25G5043d)](diffs/26_6_25G5028f_vs_26_6_25G5043d/README.md) | [provenance](manifests/26_6_25G5028f_vs_26_6_25G5043d.json) |
-| `UniversalMac` | [26.6 (25G5043d) → 26.6 (25G5052e)](diffs/26_6_25G5043d_vs_26_6_25G5052e/README.md) | [provenance](manifests/26_6_25G5043d_vs_26_6_25G5052e.json) |
-| `UniversalMac` | [26.6 (25G70) → 26.6 (25G72)](diffs/26_6_25G70_vs_26_6_25G72/README.md) | [provenance](manifests/26_6_25G70_vs_26_6_25G72.json) |
-| `UniversalMac` | [26.6 (25G72) → 26.6.1 (25G76)](diffs/26_6_25G72_vs_26_6_1_25G76/README.md) | [provenance](manifests/26_6_25G72_vs_26_6_1_25G76.json) |
+| `Mac17,6` | [26.7.2 (25G332) → 26.7.3 (25G416)](diffs/26_7_2_25G332_vs_26_7_3_25G416/README.md) | [provenance](manifests/26_7_2_25G332_vs_26_7_3_25G416.json) |
 
 ## Layout and integrity
 
