@@ -1,0 +1,16 @@
+## KeychainResources
+
+> `/System/Library/Keychain/KeychainResources.bundle/Contents/MacOS/KeychainResources`
+
+### Sections with Same Size but Changed Content
+
+- `__TEXT.__const`
+
+```diff
+
+-61901.160.44.705.1
++61901.160.44.702.12
+   __TEXT.__text: 0x0
+   __TEXT.__const: 0x50
+   - /System/Library/Frameworks/CoreData.framework/Versions/A/CoreData
+```

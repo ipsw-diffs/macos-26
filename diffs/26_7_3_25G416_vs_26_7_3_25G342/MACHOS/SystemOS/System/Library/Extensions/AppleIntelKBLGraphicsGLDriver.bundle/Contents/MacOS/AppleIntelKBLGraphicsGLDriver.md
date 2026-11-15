@@ -1,0 +1,30 @@
+## AppleIntelKBLGraphicsGLDriver
+
+> `/System/Library/Extensions/AppleIntelKBLGraphicsGLDriver.bundle/Contents/MacOS/AppleIntelKBLGraphicsGLDriver`
+
+### Sections with Same Size but Changed Content
+
+- `__TEXT.__init_offsets`
+- `__TEXT.__cstring`
+- `__TEXT.__gcc_except_tab`
+- `__TEXT.__unwind_info`
+- `__TEXT.__eh_frame`
+- `__DATA_CONST.__const`
+- `__DATA.__data`
+
+```diff
+
+ 24.5.10.0.0
+-  __TEXT.__text: 0xb78d19
++  __TEXT.__text: 0xb78d09
+   __TEXT.__stubs: 0x7d4
+   __TEXT.__init_offsets: 0x45c
+   __TEXT.__const: 0x9b0e0
+Functions:
+~ __ZL13getAttributesRN4llvm11LLVMContextENS_15GenISAIntrinsic2IDE : 400 -> 384
+CStrings:
++ "1.2(Oct 12 2026 03:25:36)"
++ "Oct 12 2026 03:25:36"
+- "1.2(Oct 30 2026 17:41:54)"
+- "Oct 30 2026 17:41:54"
+```
