@@ -1,0 +1,16 @@
+## NotificationCenter
+
+> `/System/Library/CoreServices/NotificationCenter.app/Contents/MacOS/NotificationCenter`
+
+### Sections with Same Size but Changed Content
+
+- `__TEXT.__const`
+
+```diff
+
+-1553.6.1.0.0
++1553.6.1.1.0
+   __TEXT.__text: 0x29e1b8
+   __TEXT.__auth_stubs: 0x7750
+   __TEXT.__objc_stubs: 0x6c20
+```
