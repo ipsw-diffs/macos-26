@@ -1,0 +1,29 @@
+{
+  "device": "Mac17,6",
+  "from": {
+    "build": "25G342",
+    "input": "Mac17,6_26.7.3_25G342_OTA.zip",
+    "version": "26.7.3"
+  },
+  "id": "macos-26.7.4-25G342-25G422",
+  "major_version": 26,
+  "payload": {
+    "entrypoint": "diffs/26_7_3_25G342_vs_26_7_4_25G422/README.md",
+    "git_tree": "11dd8874d1eef46c11c24c43c8634f72f1c8995f",
+    "logical_bytes": 1299607,
+    "path": "diffs/26_7_3_25G342_vs_26_7_4_25G422",
+    "tracked_file_count": 1051
+  },
+  "platform": "macOS",
+  "schema_version": 1,
+  "source": {
+    "commit": "b9b7ff8db19ad521fc2f3ad1349b394298b6405e",
+    "path": "26_7_3_25G342_vs_26_7_4_25G422",
+    "repository": "https://github.com/ipsw-diffs/macos-26"
+  },
+  "to": {
+    "build": "25G422",
+    "input": "Mac17,6_26.7.4_25G422_OTA.zip",
+    "version": "26.7.4"
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "catalog_commit": "088a1cbe94897f292acf9b540f8f7b62e2953665",
+  "discovery": {
+    "anchor": {
+      "appledb_path": "osFiles/macOS/25x - 26.x/25G332.json",
+      "beta": false,
+      "build": "25G332",
+      "metadata_source": "appledb",
+      "rc": false,
+      "released": "2026-10-26T00:00:00Z",
+      "source": {
+        "input": "Mac17,6_26.7.2_25G332_OTA.zip",
+        "kind": "ota",
+        "sha256": "1e64ee09b06067536a70cf3d0dc58f900a62ccc58deb6d66f021a047da864753",
+        "size": 18360938594,
+        "url": "https://updates.cdn-apple.com/2026FallSeed/ca266b05-21b3-4cb3-9834-dbb9793c9f1e/com_apple_MobileAsset_MacSoftwareUpdate/3c3d48c385956aae294b42a9bb8d70fecf8126b4.zip"
+      },
+      "version": "26.7.2"
+    },
+    "appledb": {
+      "commit": "3d0ac5063488dd6cc3f302f2e4740020e98e6b7b",
+      "repository": "https://github.com/littlebyteorg/appledb"
+    },
+    "appledb_platform": "macOS",
+    "device": "Mac17,6",
+    "edges": [
+      {
+        "from": {
+          "appledb_path": "osFiles/macOS/25x - 26.x/25G342.json",
+          "beta": false,
+          "build": "25G342",
+          "metadata_source": "appledb",
+          "rc": false,
+          "released": "2026-11-09T00:00:00Z",
+          "source": {
+            "input": "Mac17,6_26.7.3_25G342_OTA.zip",
+            "kind": "ota",
+            "sha256": "8817c30dcc1b144a283f7bf1dc0867a969d1d9185d10a6e41ca075aaeaa6f18c",
+            "size": 18361040129,
+            "url": "https://updates.cdn-apple.com/2026FallFCS/65bdbc01-9c55-4446-ad5b-a0d7e06482a0/com_apple_MobileAsset_MacSoftwareUpdate/20a2020f65175d83a4598927ebfd1ddf399f2276.zip"
+          },
+          "version": "26.7.3"
+        },
+        "kind": "ota",
+        "to": {
+          "appledb_path": "osFiles/macOS/25x - 26.x/25G422.json",
+          "beta": false,
+          "build": "25G422",
+          "metadata_source": "appledb",
+          "rc": true,
+          "released": "2026-11-16T00:00:00Z",
+          "source": {
+            "input": "Mac17,6_26.7.4_25G422_OTA.zip",
+            "kind": "ota",
+            "sha256": "547ccc180e9ca7205ad7456bd70153b81c0c7e04f3ad7024d6aaa15feef5e869",
+            "size": 18355239318,
+            "url": "https://updates.cdn-apple.com/2026FallSeed/d126fb25-a9cf-415a-92e3-360bb4fcb52f/com_apple_MobileAsset_MacSoftwareUpdate/a809d74318ec539e638f2ca924e426c99949d446.zip"
+          },
+          "version": "26.7.4 RC"
+        }
+      }
+    ],
+    "latest": {
+      "appledb_path": "osFiles/macOS/25x - 26.x/25G422.json",
+      "beta": false,
+      "build": "25G422",
+      "metadata_source": "appledb",
+      "rc": true,
+      "released": "2026-11-16T00:00:00Z",
+      "source": {
+        "input": "Mac17,6_26.7.4_25G422_OTA.zip",
+        "kind": "ota",
+        "sha256": "547ccc180e9ca7205ad7456bd70153b81c0c7e04f3ad7024d6aaa15feef5e869",
+        "size": 18355239318,
+        "url": "https://updates.cdn-apple.com/2026FallSeed/d126fb25-a9cf-415a-92e3-360bb4fcb52f/com_apple_MobileAsset_MacSoftwareUpdate/a809d74318ec539e638f2ca924e426c99949d446.zip"
+      },
+      "version": "26.7.4 RC"
+    },
+    "major_version": 26,
+    "pallas": {
+      "deferred": [],
+      "queried": true,
+      "used": []
+    },
+    "platform": "macOS",
+    "schema_version": 2,
+    "source_inventory": {
+      "observed": 60,
+      "selected": 3
+    },
+    "status": "candidate",
+    "track_id": "macos-26"
+  },
+  "generator": {
+    "name": "ipsw",
+    "version": "Version: 3.1.749, BuildCommit: a7dfadbcaca8375b424c12a68dae40767e5e07c1"
+  },
+  "inputs": [
+    {
+      "role": "previous",
+      "sha256": "8817c30dcc1b144a283f7bf1dc0867a969d1d9185d10a6e41ca075aaeaa6f18c",
+      "size": 18361040129,
+      "url": "https://updates.cdn-apple.com/2026FallFCS/65bdbc01-9c55-4446-ad5b-a0d7e06482a0/com_apple_MobileAsset_MacSoftwareUpdate/20a2020f65175d83a4598927ebfd1ddf399f2276.zip"
+    },
+    {
+      "role": "next",
+      "sha256": "547ccc180e9ca7205ad7456bd70153b81c0c7e04f3ad7024d6aaa15feef5e869",
+      "size": 18355239318,
+      "url": "https://updates.cdn-apple.com/2026FallSeed/d126fb25-a9cf-415a-92e3-360bb4fcb52f/com_apple_MobileAsset_MacSoftwareUpdate/a809d74318ec539e638f2ca924e426c99949d446.zip"
+    }
+  ],
+  "schema_version": 1,
+  "signatures": {
+    "commit": "81178cfe6c8869612ef092f6471fce3e17d95b20",
+    "repository": "https://github.com/blacktop/symbolicator"
+  },
+  "source_commit": "b9b7ff8db19ad521fc2f3ad1349b394298b6405e",
+  "source_tag": "payload/26_7_3_25G342_vs_26_7_4_25G422",
+  "workflow_commit": "e90559cc26bc44728fb7e71de5f180610f444bbf",
+  "workflow_run": "https://github.com/ipsw-diffs/macos-26/actions/runs/44037134425"
+}
