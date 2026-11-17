@@ -12,7 +12,8 @@ release sequence is implied.
 
 | Device | Comparison | Manifest |
 | --- | --- | --- |
-| `Mac17,6` | [26.7.3 (25G416) → 26.7.3 (25G342)](diffs/26_7_3_25G416_vs_26_7_3_25G342/README.md) | [provenance](manifests/26_7_3_25G416_vs_26_7_3_25G342.json) |
+| `Mac17,6` | [26.7.2 (25G332) → 26.7.3 (25G416)](diffs/26_7_2_25G332_vs_26_7_3_25G416/README.md) | [provenance](manifests/26_7_2_25G332_vs_26_7_3_25G416.json) |
+| `Mac17,6` | [26.7.3 (25G342) → 26.7.4 (25G422)](diffs/26_7_3_25G342_vs_26_7_4_25G422/README.md) | [provenance](manifests/26_7_3_25G342_vs_26_7_4_25G422.json) |
 
 ## Layout and integrity
 
