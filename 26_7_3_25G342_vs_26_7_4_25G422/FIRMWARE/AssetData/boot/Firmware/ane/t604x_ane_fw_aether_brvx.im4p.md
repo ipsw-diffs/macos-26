@@ -1,0 +1,16 @@
+## t604x_ane_fw_aether_brvx.im4p
+
+> `AssetData/boot/Firmware/ane/t604x_ane_fw_aether_brvx.im4p`
+
+### Sections with Same Size but Changed Content
+
+- `__TEXT.__cstring`
+- `__TEXT.__const`
+
+```diff
+CStrings:
++ "00:02:01"
++ "Oct 29 2026"
+- "00:22:29"
+- "Oct 12 2026"
+```
